@@ -279,13 +279,18 @@ async function vistaSopralluogo(id) {
         Memorizza nell'elenco per i prossimi sopralluoghi</label>
       <a class="link" href="#/impostazioni">Gestisci l'elenco delle voci</a>
     </section>
+    <section class="card">
+      <h3>Note finali</h3>
+      <textarea id="s-noteFinali" rows="5"
+        placeholder="Note generali, non legate a una sala (es. richieste del cliente, preventivi da fare)">${esc(s.noteFinali)}</textarea>
+    </section>
     <div class="azioni">
       <a class="btn primario" href="#/r/${esc(id)}">Report</a>
       <button id="btn-esporta" class="btn">⬇️ Esporta</button>
       <button id="btn-elimina" class="btn pericolo">Elimina</button>
     </div>`;
 
-  for (const campo of ['cinema', 'sala', 'data']) {
+  for (const campo of ['cinema', 'sala', 'data', 'noteFinali']) {
     document.getElementById('s-' + campo).addEventListener('input', e => {
       s[campo] = e.target.value;
       differisci('s-' + campo, () => dbPut('sopralluoghi', s));
@@ -486,6 +491,10 @@ async function vistaReport(id) {
       </section>`;
   }
 
+  // Le note finali chiudono il report, dopo tutte le sale.
+  const noteFinali = (s.noteFinali || '').trim();
+  if (noteFinali) corpo += `<h2 class="sala">Note finali</h2><p class="nota">${esc(noteFinali)}</p>`;
+
   app.innerHTML = `
     <div class="noprint barra">
       <a class="link" href="#/s/${esc(id)}">← Modifica</a>
@@ -535,6 +544,13 @@ async function creaPdf(id) {
   const spazio = h => { if (y + h > FONDO) { doc.addPage(); y = M; } };
   const blu = () => doc.setTextColor(31, 78, 121);
   const nero = () => doc.setTextColor(0, 0, 0);
+  // Fascia colorata con il titolo di una sala (o delle note finali).
+  const fascia = titolo => {
+    doc.setFillColor(234, 241, 247); doc.rect(M, y, L, 9, 'F');
+    doc.setFillColor(31, 78, 121); doc.rect(M, y, 1.6, 9, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); blu();
+    doc.text(titolo, M + 4, y + 6.3); y += 14;
+  };
 
   const cinemaSala = (s.cinema || '(cinema non indicato)') + (s.sala ? ' - ' + s.sala : '');
   if (conf.intestazione) {
@@ -584,10 +600,7 @@ async function creaPdf(id) {
     if (y > M && y + necessario > FONDO) { doc.addPage(); y = M; }
 
     if (salaInAttesa) {
-      doc.setFillColor(234, 241, 247); doc.rect(M, y, L, 9, 'F');
-      doc.setFillColor(31, 78, 121); doc.rect(M, y, 1.6, 9, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); blu();
-      doc.text(salaInAttesa, M + 4, y + 6.3); y += 14;
+      fascia(salaInAttesa);
       salaInAttesa = null;
     }
 
@@ -613,6 +626,20 @@ async function creaPdf(id) {
       y += r.alt;
     }
     y += 4;
+  }
+
+  // Note finali: chiudono il report, con il titolo sempre insieme alle prime righe.
+  const noteFinali = (s.noteFinali || '').trim();
+  if (noteFinali) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+    const righeNote = doc.splitTextToSize(noteFinali, L);
+    if (y > M && y + 14 + Math.min(righeNote.length, 3) * 5.5 > FONDO) { doc.addPage(); y = M; }
+    fascia('Note finali');
+    nero(); doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+    for (const riga of righeNote) {
+      spazio(6);
+      doc.text(riga, M, y + 4); y += 5.5;
+    }
   }
 
   const pagine = doc.getNumberOfPages();
